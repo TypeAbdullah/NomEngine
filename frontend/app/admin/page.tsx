@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Navbar } from "@/components/Navbar";
+import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   fetchAdminStats,
   fetchRankingWeights,
@@ -12,11 +13,14 @@ import {
   resumeCrawler,
   triggerReindex,
   triggerPageRank,
+  fetchCrawlActivity,
   AdminStats,
   RankingWeights,
+  CrawlActivityItem,
 } from "@/lib/api";
 import {
   Activity,
+  AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Database,
@@ -25,17 +29,20 @@ import {
   Link as LinkIcon,
   Pause,
   Play,
+  Radio,
   RefreshCw,
   Search,
-  Settings2,
-  Shield,
   Sliders,
-  TrendingUp,
+  Terminal,
   Zap,
 } from "lucide-react";
 
+type AdminTab = "crawler" | "live_process" | "ranking" | "stats";
+
 export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState<AdminTab>("crawler");
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [liveActivity, setLiveActivity] = useState<CrawlActivityItem[]>([]);
   const [weights, setWeights] = useState<RankingWeights>({
     w_bm25: 0.4,
     w_title: 0.25,
@@ -47,7 +54,7 @@ export default function AdminPage() {
   });
 
   const [seedInput, setSeedInput] = useState<string>(
-    "https://docs.python.org/3/\nhttps://www.python.org/\nhttps://www.djangoproject.com/"
+    "https://docs.python.org/3/\nhttps://vercel.com\nhttps://www.djangoproject.com/"
   );
   const [concurrency, setConcurrency] = useState<number>(5);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -56,11 +63,16 @@ export default function AdminPage() {
   const loadData = () => {
     fetchAdminStats().then(setStats).catch(() => {});
     fetchRankingWeights().then(setWeights).catch(() => {});
+    fetchCrawlActivity()
+      .then((res) => {
+        if (res.activity) setLiveActivity(res.activity);
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 3000);
+    const interval = setInterval(loadData, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -76,6 +88,7 @@ export default function AdminPage() {
     try {
       const res = await triggerCrawl(urls, concurrency);
       setStatusMessage(res.message || "Crawler started!");
+      setActiveTab("live_process");
       loadData();
     } catch (err: any) {
       setStatusMessage("Failed to start crawler: " + err.message);
@@ -141,373 +154,440 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-[#18191a] text-gray-900 dark:text-gray-100">
-      <Navbar showSearch={true} />
+    <div className="min-h-screen flex flex-col bg-[#f8f9fa] dark:bg-[#18191a] text-[#202124] dark:text-[#e8eaed] font-sans antialiased">
+      {/* Header */}
+      <header className="w-full bg-white dark:bg-[#242526] border-b border-[#dadce0] dark:border-[#3c4043] px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-4">
+          <Link href="/" className="flex items-center gap-2">
+            <Logo width={120} height={36} className="h-7 w-auto" />
+          </Link>
+          <span className="text-xs px-2.5 py-0.5 rounded-md bg-[#e8f0fe] dark:bg-[#303134] text-[#1a73e8] dark:text-[#8ab4f8] font-semibold uppercase tracking-wider">
+            Admin Console
+          </span>
+        </div>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 w-full flex flex-col gap-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="flex items-center gap-1 text-xs text-[#1a73e8] dark:text-[#8ab4f8] hover:underline"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Search</span>
+          </Link>
+          <ThemeToggle />
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-6 py-6 w-full flex flex-col gap-6">
+        {/* Top Status Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] shadow-sm">
           <div>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/"
-                className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </Link>
-              <h1 className="text-2xl font-bold tracking-tight">Admin &amp; Operations Center</h1>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Real-time monitoring, crawler orchestration, ranking weights tuner, and inverted index controls.
+            <h1 className="text-xl font-semibold">Search Engine Control &amp; Operations</h1>
+            <p className="text-xs text-[#5f6368] dark:text-[#9aa0a6] mt-0.5">
+              Live crawler management, real-time activity stream, and ranking weights tuner.
             </p>
           </div>
 
-          {stats && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#f1f3f4] dark:bg-[#303134]">
               <span
-                className={`w-3 h-3 rounded-full ${
-                  stats.crawler_is_running
-                    ? stats.crawler_is_paused
-                      ? "bg-amber-500 animate-pulse"
-                      : "bg-emerald-500 animate-ping"
+                className={`w-2.5 h-2.5 rounded-full ${
+                  stats?.crawler_is_running
+                    ? stats?.crawler_is_paused
+                      ? "bg-amber-500"
+                      : "bg-[#34A853] animate-ping"
                     : "bg-gray-400"
                 }`}
               />
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">
-                {stats.crawler_is_running
-                  ? stats.crawler_is_paused
+              <span className="text-xs font-medium">
+                {stats?.crawler_is_running
+                  ? stats?.crawler_is_paused
                     ? "Crawler Paused"
-                    : "Crawler Active"
+                    : "Crawler Running"
                   : "Crawler Idle"}
               </span>
             </div>
-          )}
+
+            {stats?.crawler_is_running && (
+              <button
+                onClick={handlePauseResume}
+                disabled={loadingAction === "pause"}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#dadce0] dark:border-[#5f6368] text-xs font-medium hover:bg-gray-100 dark:hover:bg-[#303134] transition-colors"
+              >
+                {stats.crawler_is_paused ? (
+                  <>
+                    <Play className="w-3.5 h-3.5 text-[#34A853]" />
+                    <span>Resume</span>
+                  </>
+                ) : (
+                  <>
+                    <Pause className="w-3.5 h-3.5 text-[#EA4335]" />
+                    <span>Pause</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Status Toast */}
         {statusMessage && (
-          <div className="flex items-center justify-between p-4 rounded-xl bg-nom-50 dark:bg-nom-950/50 border border-nom-200 dark:border-nom-800 text-nom-900 dark:text-nom-100 text-sm animate-in fade-in duration-200">
+          <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#e8f0fe] dark:bg-[#1f2937] border border-[#d2e3fc] dark:border-[#374151] text-[#1a73e8] dark:text-[#93c5fd] text-xs">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-nom-600 dark:text-nom-400" />
+              <CheckCircle2 className="w-4 h-4" />
               <span>{statusMessage}</span>
             </div>
-            <button
-              onClick={() => setStatusMessage(null)}
-              className="text-xs font-semibold text-nom-700 dark:text-nom-300 hover:underline"
-            >
+            <button onClick={() => setStatusMessage(null)} className="font-semibold hover:underline">
               Dismiss
             </button>
           </div>
         )}
 
-        {/* Telemetry Metric Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-1">
-            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs">
-              <span>Indexed Pages</span>
-              <Database className="w-4 h-4 text-nom-600" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] flex flex-col gap-1">
+            <span className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">Indexed Pages</span>
+            <span className="text-xl font-bold text-[#4285F4]">
               {stats?.pages_indexed.toLocaleString() ?? 0}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-1">
-            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs">
-              <span>Pages Crawled</span>
-              <Globe className="w-4 h-4 text-cyan-500" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] flex flex-col gap-1">
+            <span className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">Pages Crawled</span>
+            <span className="text-xl font-bold text-[#34A853]">
               {stats?.pages_crawled.toLocaleString() ?? 0}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-1">
-            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs">
-              <span>Frontier Queue</span>
-              <Layers className="w-4 h-4 text-amber-500" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] flex flex-col gap-1">
+            <span className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">Queue Size</span>
+            <span className="text-xl font-bold text-[#FBBC05]">
               {stats?.frontier_queue_size.toLocaleString() ?? 0}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-1">
-            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs">
-              <span>Index Terms</span>
-              <Zap className="w-4 h-4 text-emerald-500" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] flex flex-col gap-1">
+            <span className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">Index Terms</span>
+            <span className="text-xl font-bold text-[#EA4335]">
               {stats?.unique_terms_in_index.toLocaleString() ?? 0}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-1">
-            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs">
-              <span>Graph Links</span>
-              <LinkIcon className="w-4 h-4 text-indigo-500" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] flex flex-col gap-1">
+            <span className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">Graph Links</span>
+            <span className="text-xl font-bold text-[#1a73e8]">
               {stats?.total_links_graph.toLocaleString() ?? 0}
             </span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-1">
-            <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs">
-              <span>Searches Run</span>
-              <Search className="w-4 h-4 text-pink-500" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] flex flex-col gap-1">
+            <span className="text-[11px] text-[#5f6368] dark:text-[#9aa0a6]">Searches Run</span>
+            <span className="text-xl font-bold text-[#9333ea]">
               {stats?.searches_recorded.toLocaleString() ?? 0}
             </span>
           </div>
         </div>
 
-        {/* Section: Crawler Controls & Ranking Tuner */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Crawler Seeds & Actions */}
-          <div className="lg:col-span-6 flex flex-col gap-6">
-            <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-4">
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-2 border-b border-[#dadce0] dark:border-[#3c4043] pb-1">
+          <button
+            onClick={() => setActiveTab("crawler")}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+              activeTab === "crawler"
+                ? "bg-[#1a73e8] text-white"
+                : "text-[#5f6368] dark:text-[#9aa0a6] hover:bg-gray-100 dark:hover:bg-[#303134]"
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            <span>Crawl Seed Manager</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("live_process")}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+              activeTab === "live_process"
+                ? "bg-[#1a73e8] text-white"
+                : "text-[#5f6368] dark:text-[#9aa0a6] hover:bg-gray-100 dark:hover:bg-[#303134]"
+            }`}
+          >
+            <Radio className="w-4 h-4 text-[#34A853]" />
+            <span>Live Crawl Process ({liveActivity.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("ranking")}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+              activeTab === "ranking"
+                ? "bg-[#1a73e8] text-white"
+                : "text-[#5f6368] dark:text-[#9aa0a6] hover:bg-gray-100 dark:hover:bg-[#303134]"
+            }`}
+          >
+            <Sliders className="w-4 h-4" />
+            <span>Ranking Weights Tuner</span>
+          </button>
+        </div>
+
+        {/* TAB 1: CRAWL SEED MANAGER */}
+        {activeTab === "crawler" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-7 p-6 rounded-2xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] flex flex-col gap-4 shadow-sm">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-semibold text-base">
-                  <Globe className="w-5 h-5 text-nom-600 dark:text-nom-400" />
-                  <h2>Web Crawler Seed Manager</h2>
-                </div>
+                <h2 className="font-semibold text-sm">Add URLs to Crawl</h2>
+                <span className="text-xs text-[#5f6368] dark:text-[#9aa0a6]">One URL per line</span>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-                  Seed URLs (One per line)
-                </label>
-                <textarea
-                  rows={4}
-                  value={seedInput}
-                  onChange={(e) => setSeedInput(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-[#18191a] text-sm font-mono text-gray-900 dark:text-gray-100 outline-none focus:border-nom-500"
-                  placeholder="https://example.com"
-                />
-              </div>
+              <textarea
+                rows={5}
+                value={seedInput}
+                onChange={(e) => setSeedInput(e.target.value)}
+                className="w-full p-3 rounded-xl border border-[#dadce0] dark:border-[#5f6368] bg-[#f8f9fa] dark:bg-[#18191a] text-xs font-mono outline-none focus:border-[#1a73e8]"
+                placeholder="https://example.com"
+              />
 
-              <div>
-                <div className="flex items-center justify-between text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  <span>Worker Concurrency</span>
-                  <span>{concurrency} workers</span>
-                </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[#5f6368] dark:text-[#9aa0a6]">Worker Concurrency: {concurrency}</span>
                 <input
                   type="range"
                   min={1}
                   max={20}
                   value={concurrency}
                   onChange={(e) => setConcurrency(parseInt(e.target.value, 10))}
-                  className="w-full accent-nom-600"
+                  className="w-48 accent-[#1a73e8]"
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <button
-                  onClick={handleStartCrawl}
-                  disabled={loadingAction === "crawl"}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-nom-600 hover:bg-nom-700 text-white font-medium text-sm shadow-md shadow-nom-600/20 disabled:opacity-50 transition-all"
-                >
-                  <Play className="w-4 h-4 fill-white" />
-                  <span>Start Crawling</span>
-                </button>
-
-                {stats?.crawler_is_running && (
-                  <button
-                    onClick={handlePauseResume}
-                    disabled={loadingAction === "pause"}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 font-medium text-sm transition-all"
-                  >
-                    {stats.crawler_is_paused ? (
-                      <>
-                        <Play className="w-4 h-4 text-emerald-500" />
-                        <span>Resume</span>
-                      </>
-                    ) : (
-                      <>
-                        <Pause className="w-4 h-4 text-amber-500" />
-                        <span>Pause</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={handleStartCrawl}
+                disabled={loadingAction === "crawl"}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1a73e8] hover:bg-[#1557b0] text-white font-medium text-xs shadow-sm transition-all"
+              >
+                <Play className="w-4 h-4 fill-white" />
+                <span>Start Crawling</span>
+              </button>
             </div>
 
-            {/* Quick Maintenance Controls */}
-            <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center gap-2 font-semibold text-base">
-                <RefreshCw className="w-5 h-5 text-indigo-500" />
-                <h2>Index &amp; Graph Maintenance</h2>
-              </div>
+            <div className="lg:col-span-5 flex flex-col gap-4">
+              <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] shadow-sm flex flex-col gap-3">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <RefreshCw className="w-4 h-4 text-[#1a73e8]" />
+                  <span>Index &amp; PageRank Actions</span>
+                </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={handleReindex}
                   disabled={loadingAction === "reindex"}
-                  className="flex flex-col items-start p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-nom-400 bg-gray-50/50 dark:bg-[#18191a] text-left transition-all"
+                  className="w-full py-2.5 px-3 rounded-xl border border-[#dadce0] dark:border-[#5f6368] hover:bg-gray-50 dark:hover:bg-[#303134] text-xs font-medium text-left flex justify-between items-center transition-colors"
                 >
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Re-Index All Pages
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Rebuilds positional posting lists from database.
-                  </span>
+                  <span>Re-Index All Crawled Pages</span>
+                  <RefreshCw className="w-3.5 h-3.5" />
                 </button>
 
                 <button
                   onClick={handlePageRank}
                   disabled={loadingAction === "pagerank"}
-                  className="flex flex-col items-start p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-nom-400 bg-gray-50/50 dark:bg-[#18191a] text-left transition-all"
+                  className="w-full py-2.5 px-3 rounded-xl border border-[#dadce0] dark:border-[#5f6368] hover:bg-gray-50 dark:hover:bg-[#303134] text-xs font-medium text-left flex justify-between items-center transition-colors"
                 >
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                    Compute PageRank
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Power-iteration over the entire link graph.
-                  </span>
+                  <span>Recompute PageRank Link Graph</span>
+                  <LinkIcon className="w-3.5 h-3.5" />
                 </button>
               </div>
+
+              {stats && stats.top_domains.length > 0 && (
+                <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] shadow-sm">
+                  <h3 className="font-semibold text-xs mb-2">Top Indexed Domains</h3>
+                  <div className="space-y-1.5 text-xs">
+                    {stats.top_domains.map((d) => (
+                      <div key={d.domain} className="flex justify-between py-1 border-b border-gray-100 dark:border-gray-800">
+                        <span className="font-mono truncate max-w-[200px]">{d.domain}</span>
+                        <span className="font-semibold text-[#1a73e8]">{d.count} docs</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Right Column: Dynamic Ranking Weights Sliders */}
-          <div className="lg:col-span-6 flex flex-col gap-6">
-            <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-semibold text-base">
-                  <Sliders className="w-5 h-5 text-nom-600 dark:text-nom-400" />
-                  <h2>Ranking Formula Weight Tuner</h2>
-                </div>
-                <button
-                  onClick={handleSaveWeights}
-                  disabled={loadingAction === "weights"}
-                  className="px-3 py-1.5 rounded-lg bg-nom-600 hover:bg-nom-700 text-white font-medium text-xs shadow-sm transition-all"
-                >
-                  Save Weights
-                </button>
+        {/* TAB 2: LIVE CRAWL PROCESS TAB */}
+        {activeTab === "live_process" && (
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] shadow-sm flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Radio className="w-4 h-4 text-[#34A853] animate-pulse" />
+                <h2 className="font-semibold text-sm">Real-Time Crawl Stream &amp; Process Log</h2>
               </div>
-
-              <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
-                Adjust multi-factor ranking signals in real time without restarting backend services.
-              </p>
-
-              <div className="space-y-3.5 pt-2">
-                <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span>BM25 Lexical Score ({weights.w_bm25})</span>
-                    <span className="text-gray-400">Default: 0.40</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.0}
-                    max={1.5}
-                    step={0.05}
-                    value={weights.w_bm25}
-                    onChange={(e) => setWeights({ ...weights, w_bm25: parseFloat(e.target.value) })}
-                    className="w-full accent-nom-600"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span>Title Match Bonus ({weights.w_title})</span>
-                    <span className="text-gray-400">Default: 0.25</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.0}
-                    max={1.5}
-                    step={0.05}
-                    value={weights.w_title}
-                    onChange={(e) => setWeights({ ...weights, w_title: parseFloat(e.target.value) })}
-                    className="w-full accent-nom-600"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span>Exact Phrase Adjacency ({weights.w_phrase})</span>
-                    <span className="text-gray-400">Default: 0.15</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.0}
-                    max={1.5}
-                    step={0.05}
-                    value={weights.w_phrase}
-                    onChange={(e) => setWeights({ ...weights, w_phrase: parseFloat(e.target.value) })}
-                    className="w-full accent-nom-600"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span>PageRank Link Authority ({weights.w_pagerank})</span>
-                    <span className="text-gray-400">Default: 0.10</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.0}
-                    max={1.5}
-                    step={0.05}
-                    value={weights.w_pagerank}
-                    onChange={(e) => setWeights({ ...weights, w_pagerank: parseFloat(e.target.value) })}
-                    className="w-full accent-nom-600"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span>Freshness Decay Bonus ({weights.w_freshness})</span>
-                    <span className="text-gray-400">Default: 0.05</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.0}
-                    max={1.0}
-                    step={0.05}
-                    value={weights.w_freshness}
-                    onChange={(e) => setWeights({ ...weights, w_freshness: parseFloat(e.target.value) })}
-                    className="w-full accent-nom-600"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span>Spam Penalty Multiplier ({weights.p_spam})</span>
-                    <span className="text-gray-400">Default: 0.50</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.0}
-                    max={1.5}
-                    step={0.05}
-                    value={weights.p_spam}
-                    onChange={(e) => setWeights({ ...weights, p_spam: parseFloat(e.target.value) })}
-                    className="w-full accent-red-500"
-                  />
-                </div>
-              </div>
+              <span className="text-xs text-[#5f6368] dark:text-[#9aa0a6]">Auto-refreshes every 2s</span>
             </div>
 
-            {/* Top Domains Breakdown */}
-            {stats && stats.top_domains.length > 0 && (
-              <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col gap-3">
-                <h3 className="font-semibold text-sm">Top Indexed Domains</h3>
-                <div className="space-y-2 text-xs">
-                  {stats.top_domains.map((dom) => (
-                    <div key={dom.domain} className="flex justify-between items-center py-1 border-b border-gray-100 dark:border-gray-800">
-                      <span className="font-mono text-gray-700 dark:text-gray-300">{dom.domain}</span>
-                      <span className="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-semibold">{dom.count} pages</span>
-                    </div>
-                  ))}
-                </div>
+            {liveActivity.length === 0 ? (
+              <div className="py-12 text-center text-xs text-[#5f6368] dark:text-[#9aa0a6]">
+                <p>No active crawl events yet.</p>
+                <p className="mt-1">Add a seed URL in the Seed Manager to start live crawling.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#dadce0] dark:border-[#3c4043] text-[#5f6368] dark:text-[#9aa0a6]">
+                      <th className="py-2.5 px-3">Time</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">URL</th>
+                      <th className="py-2.5 px-3">Title / Error</th>
+                      <th className="py-2.5 px-3">Words</th>
+                      <th className="py-2.5 px-3">Latency</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liveActivity.map((item, idx) => (
+                      <tr
+                        key={idx}
+                        className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-[#303134] transition-colors font-mono"
+                      >
+                        <td className="py-2 px-3 text-[#5f6368] dark:text-[#9aa0a6]">{item.timestamp}</td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                              item.status === "success"
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
+                                : "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 max-w-[280px] truncate font-sans text-[#1a73e8] dark:text-[#8ab4f8]">
+                          <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                            {item.url}
+                          </a>
+                        </td>
+                        <td className="py-2 px-3 max-w-[240px] truncate text-[#202124] dark:text-[#e8eaed] font-sans">
+                          {item.title || item.error || "—"}
+                        </td>
+                        <td className="py-2 px-3">{item.word_count?.toLocaleString() || "0"}</td>
+                        <td className="py-2 px-3">{item.latency_ms} ms</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
-        </div>
+        )}
+
+        {/* TAB 3: RANKING FORMULA TUNER */}
+        {activeTab === "ranking" && (
+          <div className="p-6 rounded-2xl bg-white dark:bg-[#242526] border border-[#dadce0] dark:border-[#3c4043] shadow-sm flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-sm">Relevance Scoring Signals</h2>
+              <button
+                onClick={handleSaveWeights}
+                disabled={loadingAction === "weights"}
+                className="px-4 py-1.5 rounded-lg bg-[#1a73e8] hover:bg-[#1557b0] text-white text-xs font-semibold shadow-sm transition-all"
+              >
+                Save Weights
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>BM25 Lexical Weight ({weights.w_bm25})</span>
+                  <span className="text-[#5f6368]">Default: 0.40</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.5}
+                  step={0.05}
+                  value={weights.w_bm25}
+                  onChange={(e) => setWeights({ ...weights, w_bm25: parseFloat(e.target.value) })}
+                  className="w-full accent-[#1a73e8]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>Title Match Bonus ({weights.w_title})</span>
+                  <span className="text-[#5f6368]">Default: 0.25</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.5}
+                  step={0.05}
+                  value={weights.w_title}
+                  onChange={(e) => setWeights({ ...weights, w_title: parseFloat(e.target.value) })}
+                  className="w-full accent-[#1a73e8]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>Exact Phrase Match ({weights.w_phrase})</span>
+                  <span className="text-[#5f6368]">Default: 0.15</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.5}
+                  step={0.05}
+                  value={weights.w_phrase}
+                  onChange={(e) => setWeights({ ...weights, w_phrase: parseFloat(e.target.value) })}
+                  className="w-full accent-[#1a73e8]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>PageRank Link Authority ({weights.w_pagerank})</span>
+                  <span className="text-[#5f6368]">Default: 0.10</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.5}
+                  step={0.05}
+                  value={weights.w_pagerank}
+                  onChange={(e) => setWeights({ ...weights, w_pagerank: parseFloat(e.target.value) })}
+                  className="w-full accent-[#1a73e8]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>Freshness Bonus ({weights.w_freshness})</span>
+                  <span className="text-[#5f6368]">Default: 0.05</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.0}
+                  step={0.05}
+                  value={weights.w_freshness}
+                  onChange={(e) => setWeights({ ...weights, w_freshness: parseFloat(e.target.value) })}
+                  className="w-full accent-[#1a73e8]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span>Spam Penalty ({weights.p_spam})</span>
+                  <span className="text-[#5f6368]">Default: 0.50</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.0}
+                  max={1.5}
+                  step={0.05}
+                  value={weights.p_spam}
+                  onChange={(e) => setWeights({ ...weights, p_spam: parseFloat(e.target.value) })}
+                  className="w-full accent-[#EA4335]"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

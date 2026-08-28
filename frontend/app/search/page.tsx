@@ -3,41 +3,64 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { SearchBar } from "@/components/SearchBar";
-import { FiltersBar, SearchTab } from "@/components/FiltersBar";
-import { SearchResultItem } from "@/components/SearchResultItem";
-import { ImageResultItem } from "@/components/ImageResultItem";
-import { NewsResultItem } from "@/components/NewsResultItem";
-import { Pagination } from "@/components/Pagination";
+import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   fetchSearchResults,
   fetchImages,
   fetchNews,
+  fetchSuggestions,
   SearchResponse,
   ImageResultItem as ImageItemType,
   NewsResultItem as NewsItemType,
 } from "@/lib/api";
-import { Activity, AlertCircle, Info, Loader2, Sparkles } from "lucide-react";
+import {
+  Activity,
+  AlertCircle,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Globe,
+  Grid,
+  Image as ImageIcon,
+  Loader2,
+  Mic,
+  MoreVertical,
+  Newspaper,
+  Search,
+  SlidersHorizontal,
+  Video,
+  X,
+} from "lucide-react";
+
+type SearchTab = "all" | "images" | "news" | "videos";
 
 function SearchResultsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const query = searchParams.get("q") || "";
+  const rawQuery = searchParams.get("q") || "";
   const page = parseInt(searchParams.get("page") || "1", 10);
 
+  const [inputQuery, setInputQuery] = useState(rawQuery);
   const [activeTab, setActiveTab] = useState<SearchTab>("all");
   const [safeSearch, setSafeSearch] = useState<boolean>(true);
+  const [showTools, setShowTools] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Results State
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+
   const [webResults, setWebResults] = useState<SearchResponse | null>(null);
   const [imageResults, setImageResults] = useState<ImageItemType[]>([]);
   const [newsResults, setNewsResults] = useState<NewsItemType[]>([]);
 
   useEffect(() => {
-    if (!query) {
+    setInputQuery(rawQuery);
+  }, [rawQuery]);
+
+  useEffect(() => {
+    if (!rawQuery) {
       setLoading(false);
       return;
     }
@@ -46,17 +69,17 @@ function SearchResultsContent() {
     setError(null);
 
     if (activeTab === "all") {
-      fetchSearchResults(query, page, 10, safeSearch)
+      fetchSearchResults(rawQuery, page, 10, safeSearch)
         .then((data) => {
           setWebResults(data);
           setLoading(false);
         })
-        .catch((err) => {
+        .catch(() => {
           setError("Failed to fetch search results from NomEngine backend.");
           setLoading(false);
         });
     } else if (activeTab === "images") {
-      fetchImages(query, 24)
+      fetchImages(rawQuery, 24)
         .then((data) => {
           setImageResults(data.results);
           setLoading(false);
@@ -66,7 +89,7 @@ function SearchResultsContent() {
           setLoading(false);
         });
     } else if (activeTab === "news") {
-      fetchNews(query, 10)
+      fetchNews(rawQuery, 10)
         .then((data) => {
           setNewsResults(data.results);
           setLoading(false);
@@ -78,148 +101,260 @@ function SearchResultsContent() {
     } else {
       setLoading(false);
     }
-  }, [query, page, activeTab, safeSearch]);
+  }, [rawQuery, page, activeTab, safeSearch]);
 
   const handleSearchSubmit = (newQuery: string) => {
-    router.push(`/search?q=${encodeURIComponent(newQuery)}&page=1`);
+    const clean = newQuery.trim();
+    if (!clean) return;
+    setIsSuggestOpen(false);
+    router.push(`/search?q=${encodeURIComponent(clean)}&page=1`);
   };
 
   const handlePageChange = (newPage: number) => {
-    router.push(`/search?q=${encodeURIComponent(query)}&page=${newPage}`);
+    router.push(`/search?q=${encodeURIComponent(rawQuery)}&page=${newPage}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const tabs = [
+    { id: "all" as SearchTab, label: "All", icon: Search },
+    { id: "images" as SearchTab, label: "Images", icon: ImageIcon },
+    { id: "videos" as SearchTab, label: "Videos", icon: Video },
+    { id: "news" as SearchTab, label: "News", icon: Newspaper },
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-[#202124]">
-      {/* Sticky Header */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#202124]/95 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-[#202124] text-[#1f1f1f] dark:text-[#e8eaed] font-sans antialiased">
+      {/* Sticky Google Header */}
+      <header className="sticky top-0 z-40 bg-white dark:bg-[#202124] border-b border-[#ebebeb] dark:border-[#3c4043]">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 pt-5 pb-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-6 flex-1 max-w-3xl">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 group shrink-0">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-nom-600 to-indigo-500 flex items-center justify-center text-white font-bold text-lg shadow-md shadow-nom-500/20 group-hover:scale-105 transition-transform">
-                N
-              </div>
-              <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white hidden sm:inline">
-                Nom<span className="text-nom-600 dark:text-nom-400">Engine</span>
-              </span>
+            <Link href="/" className="shrink-0">
+              <Logo width={120} height={36} className="h-8 w-auto" />
             </Link>
 
-            {/* Top Search Bar */}
-            <div className="w-full">
-              <SearchBar initialQuery={query} onSearch={handleSearchSubmit} />
+            {/* Google Search Bar in Header */}
+            <div className="relative w-full">
+              <div className="flex items-center w-full bg-white dark:bg-[#202124] border border-[#dfe1e5] dark:border-[#5f6368] rounded-full shadow-sm hover:shadow-md focus-within:shadow-md px-4 py-2.5 transition-all">
+                <input
+                  type="text"
+                  value={inputQuery}
+                  onChange={(e) => setInputQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSearchSubmit(inputQuery);
+                  }}
+                  className="w-full bg-transparent outline-none text-[15px] text-gray-900 dark:text-white"
+                />
+
+                {inputQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setInputQuery("")}
+                    className="p-1 text-[#70757a] hover:text-gray-900 dark:hover:text-white mr-2 border-r border-[#dfe1e5] dark:border-[#5f6368] pr-2"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+
+                <div className="flex items-center gap-1.5 shrink-0 pl-1 text-[#4285F4]">
+                  <button
+                    type="button"
+                    onClick={() => handleSearchSubmit(inputQuery)}
+                    className="p-1 hover:opacity-80"
+                    aria-label="Search"
+                  >
+                    <Search className="w-4 h-4 text-[#4285F4]" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             <Link
               href="/admin"
-              className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#303134] text-gray-600 dark:text-gray-300 transition-colors"
-              title="Admin Dashboard"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#f8f9fa] hover:bg-[#e8eaed] dark:bg-[#303134] dark:hover:bg-[#3c4043] text-xs font-medium text-[#3c4043] dark:text-[#e8eaed] transition-colors"
             >
-              <Activity className="w-5 h-5 text-nom-600 dark:text-nom-400" />
+              <Activity className="w-3.5 h-3.5 text-[#4285F4]" />
+              <span className="hidden sm:inline">Admin &amp; Crawler</span>
             </Link>
             <ThemeToggle />
           </div>
         </div>
 
-        {/* Tabs & Tools Subheader */}
-        <FiltersBar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          safeSearch={safeSearch}
-          onSafeSearchToggle={() => setSafeSearch(!safeSearch)}
-          tookMs={webResults?.took_ms}
-          totalResults={webResults?.total}
-        />
+        {/* Google Tabs Subheader */}
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 flex items-center justify-between text-[13px] border-t border-transparent">
+          <div className="flex items-center gap-1 sm:pl-[144px] overflow-x-auto scrollbar-none">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-3 border-b-[3px] font-medium transition-colors whitespace-nowrap ${
+                    isActive
+                      ? "border-[#1a73e8] text-[#1a73e8] dark:border-[#8ab4f8] dark:text-[#8ab4f8]"
+                      : "border-transparent text-[#70757a] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-white"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => setShowTools(!showTools)}
+              className={`flex items-center gap-1.5 px-3 py-3 border-b-[3px] border-transparent font-medium text-[#70757a] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-white transition-colors`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Tools</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tools bar */}
+        {showTools && (
+          <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-2 sm:pl-[144px] flex items-center gap-4 text-xs text-[#70757a] dark:text-[#9aa0a6] border-t border-[#ebebeb] dark:border-[#3c4043] bg-[#fafafa] dark:bg-[#1a1a1a]">
+            <button
+              onClick={() => setSafeSearch(!safeSearch)}
+              className="hover:text-gray-900 dark:hover:text-white font-medium"
+            >
+              SafeSearch: <span className="font-semibold">{safeSearch ? "On" : "Off"}</span>
+            </button>
+            <span>•</span>
+            <span>Any time</span>
+            <span>•</span>
+            <span>All results</span>
+          </div>
+        )}
       </header>
 
       {/* Main Results Container */}
-      <main className="flex-1 max-w-6xl mx-auto px-6 py-6 w-full">
+      <main className="flex-1 max-w-[1280px] mx-auto px-4 sm:px-6 py-3 w-full sm:pl-[168px]">
+        {/* Result Stats Line */}
+        {webResults && !loading && (
+          <div className="text-[14px] text-[#70757a] dark:text-[#9aa0a6] mb-5">
+            About {webResults.total.toLocaleString()} results ({(webResults.took_ms / 1000).toFixed(2)} seconds)
+          </div>
+        )}
+
         {loading && (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-500 dark:text-gray-400">
-            <Loader2 className="w-8 h-8 animate-spin text-nom-600 dark:text-nom-400" />
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-[#70757a]">
+            <Loader2 className="w-8 h-8 animate-spin text-[#4285F4]" />
             <p className="text-sm">Searching the indexed web...</p>
           </div>
         )}
 
         {!loading && error && (
-          <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 my-8">
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 my-4 max-w-xl">
             <AlertCircle className="w-5 h-5 shrink-0" />
             <p className="text-sm">{error}</p>
           </div>
         )}
 
-        {!loading && !error && !query && (
-          <div className="text-center py-20 text-gray-500">
-            <p>Please enter a search query above.</p>
-          </div>
-        )}
-
-        {/* Tab 1: All (Standard Web Results) */}
+        {/* Tab 1: All Web Results */}
         {!loading && !error && activeTab === "all" && webResults && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left Results Column */}
-            <div className="lg:col-span-8 flex flex-col gap-6">
-              {webResults.results.length === 0 ? (
-                <div className="py-12">
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                    No results found for &ldquo;{query}&rdquo;
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                    Suggestions:
-                  </p>
-                  <ul className="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 mt-2 space-y-1">
-                    <li>Make sure all words are spelled correctly.</li>
-                    <li>Try different keywords or broader search terms.</li>
-                    <li>
-                      Crawl more seed domains in the{" "}
-                      <Link href="/admin" className="text-nom-600 dark:text-nom-400 underline">
-                        Admin Dashboard
-                      </Link>
-                      .
-                    </li>
-                  </ul>
-                </div>
-              ) : (
-                <>
-                  {webResults.results.map((item) => (
-                    <SearchResultItem key={item.id} result={item} />
+          <div className="flex flex-col gap-7 max-w-[652px]">
+            {webResults.results.length === 0 ? (
+              <div className="py-8">
+                <h3 className="text-lg text-[#202124] dark:text-white">
+                  Your search - <b>{rawQuery}</b> - did not match any documents.
+                </h3>
+                <p className="text-sm text-[#4d5156] dark:text-[#bdc1c6] mt-4">Suggestions:</p>
+                <ul className="list-disc list-inside text-sm text-[#4d5156] dark:text-[#bdc1c6] mt-2 space-y-1.5">
+                  <li>Make sure all words are spelled correctly.</li>
+                  <li>Try different keywords or broader terms.</li>
+                  <li>
+                    Crawl more URLs in the{" "}
+                    <Link href="/admin" className="text-[#1a0dab] dark:text-[#8ab4f8] hover:underline">
+                      Admin Dashboard
+                    </Link>
+                    .
+                  </li>
+                </ul>
+              </div>
+            ) : (
+              <>
+                {webResults.results.map((item) => {
+                  const domain = item.display_url.split("/")[0];
+                  return (
+                    <article key={item.id} className="flex flex-col group">
+                      {/* URL & Site info */}
+                      <div className="flex items-center gap-3 mb-1">
+                        <div className="w-7 h-7 rounded-full bg-[#f1f3f4] dark:bg-[#303134] flex items-center justify-center text-[#5f6368] dark:text-[#9aa0a6] shrink-0 text-xs">
+                          <Globe className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[14px] leading-tight text-[#202124] dark:text-[#dadce0] font-normal">
+                            {domain}
+                          </span>
+                          <span className="text-[12px] text-[#4d5156] dark:text-[#bdc1c6] truncate max-w-lg">
+                            {item.url}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Title */}
+                      <h2 className="text-[20px] leading-[26px] font-normal mt-0.5">
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#1a0dab] dark:text-[#8ab4f8] hover:underline visited:text-[#609] dark:visited:text-[#c58af9]"
+                        >
+                          {item.title}
+                        </a>
+                      </h2>
+
+                      {/* Highlighted Snippet */}
+                      <p
+                        className="text-[14px] leading-[22px] text-[#4d5156] dark:text-[#bdc1c6] mt-1"
+                        dangerouslySetInnerHTML={{ __html: item.snippet || item.description }}
+                      />
+                    </article>
+                  );
+                })}
+
+                {/* Google-Style Pagination */}
+                <div className="flex items-center gap-3 my-10 text-[14px] text-[#1a0dab] dark:text-[#8ab4f8]">
+                  {page > 1 && (
+                    <button
+                      onClick={() => handlePageChange(page - 1)}
+                      className="flex items-center gap-1 hover:underline"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span>Previous</span>
+                    </button>
+                  )}
+
+                  {Array.from({ length: Math.min(6, Math.ceil(webResults.total / 10)) }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => handlePageChange(p)}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${
+                        p === page
+                          ? "bg-[#e8f0fe] dark:bg-[#303134] text-[#1a73e8] dark:text-[#8ab4f8] font-bold"
+                          : "hover:underline text-[#70757a] dark:text-[#9aa0a6]"
+                      }`}
+                    >
+                      {p}
+                    </button>
                   ))}
 
-                  <Pagination
-                    currentPage={page}
-                    totalResults={webResults.total}
-                    pageSize={10}
-                    onPageChange={handlePageChange}
-                  />
-                </>
-              )}
-            </div>
-
-            {/* Right Information & Query Details Panel */}
-            <aside className="lg:col-span-4 flex flex-col gap-4">
-              <div className="p-4 rounded-2xl border border-gray-200 dark:border-gray-700/80 bg-gray-50/50 dark:bg-[#303134]/40 flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                  <Sparkles className="w-4 h-4 text-nom-600 dark:text-nom-400" />
-                  <span>Search Knowledge &amp; Filters</span>
+                  {page < Math.ceil(webResults.total / 10) && (
+                    <button
+                      onClick={() => handlePageChange(page + 1)}
+                      className="flex items-center gap-1 hover:underline"
+                    >
+                      <span>Next</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                <div className="text-xs text-gray-600 dark:text-gray-300 space-y-2">
-                  <p>
-                    <span className="font-semibold">Query:</span> {query}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Total Matches:</span> {webResults.total}
-                  </p>
-                  <p>
-                    <span className="font-semibold">Execution Latency:</span> {webResults.took_ms} ms
-                  </p>
-                </div>
-                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-[11px] text-gray-500 dark:text-gray-400">
-                  Ranked via BM25 + PageRank graph calculations.
-                </div>
-              </div>
-            </aside>
+              </>
+            )}
           </div>
         )}
 
@@ -227,11 +362,30 @@ function SearchResultsContent() {
         {!loading && !error && activeTab === "images" && (
           <div>
             {imageResults.length === 0 ? (
-              <p className="text-gray-500 py-12">No images found for this query.</p>
+              <p className="text-[#70757a] py-8">No images found for &ldquo;{rawQuery}&rdquo;.</p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {imageResults.map((img) => (
-                  <ImageResultItem key={img.id} image={img} />
+                  <a
+                    key={img.id}
+                    href={img.page_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-col rounded-xl overflow-hidden bg-gray-50 dark:bg-[#303134] border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all group"
+                  >
+                    <div className="aspect-square bg-gray-200 dark:bg-gray-800 overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.image_url}
+                        alt={img.alt_text || "Result image"}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    </div>
+                    <div className="p-2 text-[12px] truncate text-gray-800 dark:text-gray-200">
+                      {img.alt_text || img.title || "Image"}
+                    </div>
+                  </a>
                 ))}
               </div>
             )}
@@ -240,21 +394,26 @@ function SearchResultsContent() {
 
         {/* Tab 3: News */}
         {!loading && !error && activeTab === "news" && (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 max-w-[652px]">
             {newsResults.length === 0 ? (
-              <p className="text-gray-500 py-12">No recent news articles found.</p>
+              <p className="text-[#70757a] py-8">No news articles found for &ldquo;{rawQuery}&rdquo;.</p>
             ) : (
               newsResults.map((news) => (
-                <NewsResultItem key={news.id} news={news} />
+                <article key={news.id} className="p-4 rounded-xl border border-[#dfe1e5] dark:border-[#3c4043] bg-white dark:bg-[#202124]">
+                  <div className="text-xs text-[#70757a] mb-1">
+                    {news.publisher || "Publisher"} • {news.published_date ? new Date(news.published_date).toLocaleDateString() : "Recent"}
+                  </div>
+                  <h3 className="text-[18px] leading-snug font-normal">
+                    <a href={news.url} target="_blank" rel="noopener noreferrer" className="text-[#1a0dab] dark:text-[#8ab4f8] hover:underline">
+                      {news.headline}
+                    </a>
+                  </h3>
+                  <p className="text-[13px] text-[#4d5156] dark:text-[#bdc1c6] mt-1.5">
+                    {news.snippet}
+                  </p>
+                </article>
               ))
             )}
-          </div>
-        )}
-
-        {/* Tab 4: Videos */}
-        {!loading && !error && activeTab === "videos" && (
-          <div className="py-12 text-center text-gray-500">
-            <p>Video indexing is enabled. No video feeds crawled for this query yet.</p>
           </div>
         )}
       </main>
@@ -267,7 +426,7 @@ export default function SearchResultsPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#202124]">
-          <div className="w-8 h-8 rounded-full border-2 border-nom-600 border-t-transparent animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-[#4285F4] border-t-transparent animate-spin" />
         </div>
       }
     >

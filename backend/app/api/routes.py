@@ -269,6 +269,17 @@ async def healthcheck():
 # Admin Control Endpoints
 # ---------------------------------------------------------
 
+@router.get("/admin/crawler/activity")
+async def get_crawler_activity():
+    """Returns live streaming crawl events and real-time process activity."""
+    return {
+        "is_running": crawler_instance.is_running,
+        "is_paused": crawler_instance.is_paused,
+        "queue_size": frontier.queue_size,
+        "activity": crawler_instance.recent_activity[:50],
+    }
+
+
 @router.post("/admin/crawl", dependencies=[Depends(verify_admin_key)])
 async def trigger_crawl(payload: CrawlSeedRequest):
     """Adds seed URLs and starts the crawler."""

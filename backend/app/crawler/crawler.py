@@ -26,6 +26,12 @@ class Crawler:
         self._workers: List[asyncio.Task] = []
         self._crawled_count = 0
         self._lock = asyncio.Lock()
+        self.recent_activity: List[dict] = []
+
+    def record_activity(self, item: dict):
+        self.recent_activity.insert(0, item)
+        if len(self.recent_activity) > 100:
+            self.recent_activity.pop()
 
     async def start(self, seeds: Optional[List[str]] = None, num_workers: int = 5):
         """Starts the crawling engine with the specified worker concurrency."""
@@ -223,10 +229,22 @@ class Crawler:
                         referrer=url,
                     )
 
-            # 8. Mark completed
+            # 8. Mark completed and record live telemetry
             await frontier.mark_completed(url)
             async with self._lock:
                 self._crawled_count += 1
+
+            self.record_activity({
+                "url": url,
+                "domain": domain,
+                "title": parsed.title or url,
+                "status": "success",
+                "status_code": response.status_code,
+                "latency_ms": round(response.latency_ms, 1),
+                "word_count": parsed.word_count,
+                "links_count": len(parsed.links),
+                "timestamp": datetime.utcnow().strftime("%H:%M:%S"),
+            })
 
             log_event(
                 "page_crawled_and_stored",
@@ -239,6 +257,16 @@ class Crawler:
         except Exception as e:
             logger.error(f"Error crawling {url}: {e}")
             await frontier.mark_failed(url, str(e))
+            self.record_activity({
+                "url": url,
+                "domain": domain,
+                "title": url,
+                "status": "failed",
+                "status_code": 0,
+                "latency_ms": 0.0,
+                "error": str(e),
+                "timestamp": datetime.utcnow().strftime("%H:%M:%S"),
+            })
         finally:
             await frontier.release_domain(domain)
 
