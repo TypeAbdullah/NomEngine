@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Document & Metadata Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: nomengine_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nomengine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Task Broker
+  redis:
+    image: redis:7-alpine
+    container_name: nomengine_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend Search API Service
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nomengine_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres:5432/nomengine
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: production
+      CRAWLER_MAX_DOCUMENTS: 50000
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  # Crawler Worker Service
+  crawler_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nomengine_crawler_worker
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres:5432/nomengine
+      REDIS_URL: redis://redis:6379/0
+    command: python -m app.workers.crawler_worker
+
+  # Indexer Worker Service
+  indexer_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nomengine_indexer_worker
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres:5432/nomengine
+      REDIS_URL: redis://redis:6379/0
+    command: python -m app.workers.indexer_worker
+
+  # Re-Crawl Scheduler Service
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nomengine_scheduler
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres:5432/nomengine
+      REDIS_URL: redis://redis:6379/0
+    command: python -c "import asyncio; from app.workers.scheduler import run_scheduler; asyncio.run(run_scheduler())"
+
+  # Next.js Search Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nomengine_frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:8000/api
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  redis_data:
