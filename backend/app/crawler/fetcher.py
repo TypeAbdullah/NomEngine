@@ -50,8 +50,6 @@ class AsyncFetcher:
             "User-Agent": settings.CRAWLER_USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
         }
 
     async def get_client(self) -> httpx.AsyncClient:
@@ -109,78 +107,65 @@ class AsyncFetcher:
         while retries <= settings.CRAWLER_MAX_RETRIES:
             start_time = time.perf_counter()
             try:
-                # Stream response to enforce max body size before loading into RAM
-                async with client.stream("GET", url, headers=headers) as response:
-                    latency_s = time.perf_counter() - start_time
-                    latency_ms = latency_s * 1000.0
-                    CRAWL_LATENCY_SECONDS.labels(domain=domain).observe(latency_s)
+                response = await client.get(url, headers=headers)
+                latency_s = time.perf_counter() - start_time
+                latency_ms = latency_s * 1000.0
+                CRAWL_LATENCY_SECONDS.labels(domain=domain).observe(latency_s)
 
-                    # Handle 304 Not Modified
-                    if response.status_code == 304:
-                        CRAWL_REQUESTS_TOTAL.labels(status="304", domain=domain).inc()
-                        return FetchResponse(
-                            url=str(response.url),
-                            status_code=304,
-                            latency_ms=latency_ms,
-                        )
-
-                    # Validate Content-Type
-                    content_type = response.headers.get("Content-Type", "").lower()
-                    if not any(t in content_type for t in ("text/html", "application/xhtml+xml", "text/plain")):
-                        CRAWL_REQUESTS_TOTAL.labels(status="skipped_content_type", domain=domain).inc()
-                        return FetchResponse(
-                            url=str(response.url),
-                            status_code=response.status_code,
-                            content_type=content_type,
-                            error=f"UNSUPPORTED_MIME_TYPE: {content_type}",
-                            latency_ms=latency_ms,
-                        )
-
-                    # Read body with max size cap
-                    chunks = []
-                    bytes_read = 0
-                    async for chunk in response.aiter_bytes():
-                        bytes_read += len(chunk)
-                        if bytes_read > settings.CRAWLER_MAX_RESPONSE_SIZE:
-                            CRAWL_ERRORS_TOTAL.labels(error_type="oversized", domain=domain).inc()
-                            return FetchResponse(
-                                url=str(response.url),
-                                status_code=response.status_code,
-                                error=f"PAGE_OVERSIZED_EXCEEDS_{settings.CRAWLER_MAX_RESPONSE_SIZE}_BYTES",
-                                latency_ms=latency_ms,
-                            )
-                        chunks.append(chunk)
-
-                    body_bytes = b"".join(chunks)
-                    
-                    # Detect encoding and decode
-                    encoding = response.encoding or "utf-8"
-                    try:
-                        text_content = body_bytes.decode(encoding, errors="replace")
-                    except Exception:
-                        text_content = body_bytes.decode("utf-8", errors="replace")
-
-                    CRAWL_REQUESTS_TOTAL.labels(
-                        status=str(response.status_code), domain=domain
-                    ).inc()
-
-                    log_event(
-                        "crawl_completed",
-                        url=url,
-                        status=response.status_code,
-                        latency_ms=round(latency_ms, 2),
-                        bytes=bytes_read,
+                # Handle 304 Not Modified
+                if response.status_code == 304:
+                    CRAWL_REQUESTS_TOTAL.labels(status="304", domain=domain).inc()
+                    return FetchResponse(
+                        url=str(response.url),
+                        status_code=304,
+                        latency_ms=latency_ms,
                     )
 
+                # Validate Content-Type
+                content_type = response.headers.get("Content-Type", "").lower()
+                if not any(t in content_type for t in ("text/html", "application/xhtml+xml", "text/plain")):
+                    CRAWL_REQUESTS_TOTAL.labels(status="skipped_content_type", domain=domain).inc()
                     return FetchResponse(
                         url=str(response.url),
                         status_code=response.status_code,
-                        content=text_content,
                         content_type=content_type,
-                        etag=response.headers.get("ETag"),
-                        last_modified=response.headers.get("Last-Modified"),
+                        error=f"UNSUPPORTED_MIME_TYPE: {content_type}",
                         latency_ms=latency_ms,
                     )
+
+                # Validate content length
+                if len(response.content) > settings.CRAWLER_MAX_RESPONSE_SIZE:
+                    CRAWL_ERRORS_TOTAL.labels(error_type="oversized", domain=domain).inc()
+                    return FetchResponse(
+                        url=str(response.url),
+                        status_code=response.status_code,
+                        error=f"PAGE_OVERSIZED_EXCEEDS_{settings.CRAWLER_MAX_RESPONSE_SIZE}_BYTES",
+                        latency_ms=latency_ms,
+                    )
+
+                text_content = response.text
+
+                CRAWL_REQUESTS_TOTAL.labels(
+                    status=str(response.status_code), domain=domain
+                ).inc()
+
+                log_event(
+                    "crawl_completed",
+                    url=url,
+                    status=response.status_code,
+                    latency_ms=round(latency_ms, 2),
+                    bytes=len(response.content),
+                )
+
+                return FetchResponse(
+                    url=str(response.url),
+                    status_code=response.status_code,
+                    content=text_content,
+                    content_type=content_type,
+                    etag=response.headers.get("ETag"),
+                    last_modified=response.headers.get("Last-Modified"),
+                    latency_ms=latency_ms,
+                )
 
             except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout) as e:
                 retries += 1

@@ -105,7 +105,7 @@ class RobotsManager:
         lock = self._get_domain_lock(domain)
         async with lock:
             last_req = self._domain_last_request.get(domain, 0.0)
-            _, _, crawl_delay = self._parsers.get(domain, (None, None, settings.CRAWLER_CRAWL_DELAY_DEFAULT, 0))
+            _, _, crawl_delay, _ = self._parsers.get(domain, (None, None, settings.CRAWLER_CRAWL_DELAY_DEFAULT, 0))
             elapsed = time.time() - last_req
             if elapsed < crawl_delay:
                 await asyncio.sleep(crawl_delay - elapsed)

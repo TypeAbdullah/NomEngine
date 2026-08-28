@@ -123,7 +123,7 @@ class Crawler:
 
             # 5. Content Deduplication
             content_hash = calculate_sha256(parsed.main_text or parsed.title)
-            simhash_val = simhash_calculator.calculate_simhash(parsed.main_text or parsed.title)
+            simhash_val = str(simhash_calculator.calculate_simhash(parsed.main_text or parsed.title))
 
             # 6. Database Storage & Update
             target_url = parsed.canonical_url or url
@@ -193,8 +193,12 @@ class Crawler:
                     )
                     session.add(news_entry)
 
-                # Save Page Links for PageRank & Anchor text
+                # Save Page Links for PageRank & Anchor text (deduplicated per page)
+                saved_targets = set()
                 for target_link, anchor in parsed.links:
+                    if target_link in saved_targets:
+                        continue
+                    saved_targets.add(target_link)
                     try:
                         link_entry = PageLink(
                             source_url=target_url,

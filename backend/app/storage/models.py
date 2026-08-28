@@ -41,7 +41,7 @@ class Document(Base):
     word_count = Column(Integer, nullable=False, default=0)
     
     content_hash = Column(String(64), nullable=False, index=True)  # SHA-256
-    simhash = Column(BigInteger, nullable=False, default=0)         # 64-bit SimHash
+    simhash = Column(String(32), nullable=False, default="0")       # 64-bit SimHash hex/str
     
     first_seen = Column(DateTime, nullable=False, default=datetime.utcnow)
     last_crawled = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
